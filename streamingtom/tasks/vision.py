@@ -94,7 +94,8 @@ class VisionTask:
                 self._store_new_kv_cache(
                     video_id,
                     prefill_result['past_key_values'],
-                    prefill_result.get('accumulated_length', 0)
+                    prefill_result.get('accumulated_length', 0),
+                    StreamingTOMContext.get_model_num_layers(model)
                 )
 
         del accumulated_kv, prefill_result
@@ -140,7 +141,8 @@ class VisionTask:
 
         return cache
 
-    def _store_new_kv_cache(self, video_id: str, past_key_values, accumulated_length: int):
+    def _store_new_kv_cache(self, video_id: str, past_key_values, accumulated_length: int,
+                            expected_num_layers: int):
         if not past_key_values or not hasattr(past_key_values, 'key_cache'):
             return
 
@@ -149,8 +151,10 @@ class VisionTask:
         if num_layers == 0:
             return
 
-        assert num_layers == 28, f"Expected 28 layers, got {num_layers}"
-        assert len(past_key_values.value_cache) == 28, f"Value cache layers mismatch"
+        assert num_layers == expected_num_layers, (
+            f"Expected {expected_num_layers} layers from config, got {num_layers}"
+        )
+        assert len(past_key_values.value_cache) == expected_num_layers, "Value cache layers mismatch"
 
         stored_layers = 0
         for layer_idx, (k, v) in enumerate(zip(past_key_values.key_cache, past_key_values.value_cache)):
@@ -173,7 +177,9 @@ class VisionTask:
             self.oqm.store_kv_cache(video_id, layer_idx, k, v)
             stored_layers += 1
 
-        assert stored_layers == 28, f"Stored {stored_layers} layers, expected 28"
+        assert stored_layers == expected_num_layers, (
+            f"Stored {stored_layers} layers, expected {expected_num_layers}"
+        )
 
     def _prefill_vision_tokens(self, vision_context: torch.Tensor, model_forward_fn, accumulated_kv_cache=None) -> Dict[str, Any]:
         if vision_context is None or vision_context.numel() == 0:
@@ -197,7 +203,10 @@ class VisionTask:
                 accumulated_kv_cache = self._init_system_prompt(model, device)
                 streamingtom_ctx.should_store_keys = True
             elif accumulated_kv_cache:
-                accumulated_kv_cache = self._convert_to_dynamic_cache(accumulated_kv_cache)
+                accumulated_kv_cache = self._convert_to_dynamic_cache(
+                    accumulated_kv_cache,
+                    StreamingTOMContext.get_model_num_layers(model)
+                )
 
             kv_cache_len = self._get_cache_length(accumulated_kv_cache)
             if kv_cache_len is None:
@@ -225,7 +234,10 @@ class VisionTask:
                 return {'past_key_values': None}
 
             assert hasattr(outputs.past_key_values, 'key_cache'), "No key_cache after forward"
-            assert len(outputs.past_key_values.key_cache) == 28, f"Expected 28 layers, got {len(outputs.past_key_values.key_cache)}"
+            expected_num_layers = StreamingTOMContext.get_model_num_layers(model)
+            assert len(outputs.past_key_values.key_cache) == expected_num_layers, (
+                f"Expected {expected_num_layers} layers, got {len(outputs.past_key_values.key_cache)}"
+            )
 
             for i, (k, v) in enumerate(zip(outputs.past_key_values.key_cache, outputs.past_key_values.value_cache)):
                 assert k is not None, f"Layer {i} key is None"
@@ -263,11 +275,13 @@ class VisionTask:
 
         raise ValueError(f"Unknown cache type {type(cache)}")
 
-    def _convert_to_dynamic_cache(self, cache):
+    def _convert_to_dynamic_cache(self, cache, expected_num_layers: int):
         if not cache:
             return None
         assert isinstance(cache, list), f"Cache must be a list, got {type(cache)}"
-        assert len(cache) == 28, f"Cache must have 28 layers, got {len(cache)}"
+        assert len(cache) == expected_num_layers, (
+            f"Cache must have {expected_num_layers} layers, got {len(cache)}"
+        )
 
         assert cache[0] is not None and cache[0][0] is not None, "Layer 0 cache is None"
         assert cache[0][0].shape[2] > 0, f"Layer 0 has 0 tokens"
@@ -283,7 +297,9 @@ class VisionTask:
             assert k.shape[2] == total_tokens_before, f"Layer {layer_idx} token count mismatch"
             cache_obj.update(k, v, layer_idx)
 
-        assert len(cache_obj.key_cache) == 28, f"Expected 28 layers, got {len(cache_obj.key_cache)}"
+        assert len(cache_obj.key_cache) == expected_num_layers, (
+            f"Expected {expected_num_layers} layers, got {len(cache_obj.key_cache)}"
+        )
         assert cache_obj.key_cache[0] is not None, "DynamicCache key_cache[0] is None"
         assert cache_obj.key_cache[0].shape[2] == total_tokens_before, "Token count mismatch after conversion"
 
@@ -305,7 +321,10 @@ class VisionTask:
         assert outputs.past_key_values is not None, "No past_key_values in outputs"
         assert hasattr(outputs.past_key_values, 'key_cache'), "No key_cache in outputs"
         assert hasattr(outputs.past_key_values, 'value_cache'), "No value_cache in outputs"
-        assert len(outputs.past_key_values.key_cache) == 28, f"Expected 28 layers, got {len(outputs.past_key_values.key_cache)}"
+        expected_num_layers = StreamingTOMContext.get_model_num_layers(model)
+        assert len(outputs.past_key_values.key_cache) == expected_num_layers, (
+            f"Expected {expected_num_layers} layers, got {len(outputs.past_key_values.key_cache)}"
+        )
 
         streamingtom_ctx = StreamingTOMContext.get_instance()
         video_id = streamingtom_ctx.video_id

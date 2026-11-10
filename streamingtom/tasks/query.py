@@ -201,7 +201,15 @@ class QueryTask:
             assert video_id is not None, "video_id is None"
 
             num_layers = StreamingTOMContext.get_model_num_layers(model)
-            assert num_layers == 28, f"Expected 28 layers, got {num_layers}"
+            if hasattr(model, 'model') and hasattr(model.model, 'layers'):
+                actual_num_layers = len(model.model.layers)
+            elif hasattr(model, 'language_model') and hasattr(model.language_model, 'layers'):
+                actual_num_layers = len(model.language_model.layers)
+            else:
+                raise AssertionError(f"Cannot locate language layers for {type(model).__name__}")
+            assert actual_num_layers == num_layers, (
+                f"Configured {num_layers} layers, but model exposes {actual_num_layers}"
+            )
 
             assert hasattr(streamingtom_ctx, 'selected_vision_group_indices_per_layer'), "No selected indices"
             assert len(streamingtom_ctx.selected_vision_group_indices_per_layer) > 0, "Empty selected indices"

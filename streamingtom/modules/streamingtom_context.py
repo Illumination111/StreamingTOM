@@ -44,7 +44,10 @@ class StreamingTOMContext:
             layers = model.language_model.layers
 
         assert layers is not None, f"Failed to get model layers for {type(model).__name__}"
-        assert len(layers) == 28, f"Expected 28 layers, got {len(layers)}"
+        configured_layers = self.get_model_num_layers(model)
+        assert len(layers) == configured_layers, (
+            f"Configured {configured_layers} layers, but model exposes {len(layers)}"
+        )
 
         for layer_idx, layer in enumerate(layers):
             assert hasattr(layer, 'self_attn'), f"Layer {layer_idx} has no self_attn"
