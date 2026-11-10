@@ -215,10 +215,11 @@ class StreamingTOMBioCacheAdapter:
         pipeline = getattr(self.model, "_video_pipelines", {}).get(self.stream_id)
         return getattr(getattr(pipeline, "streamingtom_core", None), "oqm", None)
 
-    def _persistent_objects(self) -> dict[str, Any]:
+    def persistent_state(self) -> dict[str, Any]:
+        """返回 OQM 随流累计、需纳入长期内存核算的状态对象。"""
         oqm = self._get_oqm()
         if oqm is None:
-            return {}
+            return {"external_timestamps": self._timestamps}
         return {
             "packed_tensors_scale_min_and_lengths": getattr(oqm, "quantized_storage", {}),
             "unquantized_kv": getattr(oqm, "kv_cache_storage", {}),
@@ -229,7 +230,8 @@ class StreamingTOMBioCacheAdapter:
             "external_timestamps": self._timestamps,
         }
 
-    def _static_objects(self) -> dict[str, Any]:
+    def static_extra_state(self) -> dict[str, Any]:
+        """返回模型、tokenizer、OQM 配置和适配器配置等静态状态。"""
         oqm = self._get_oqm()
         oqm_config = {} if oqm is None else {
             key: getattr(oqm, key, None) for key in (
@@ -243,11 +245,18 @@ class StreamingTOMBioCacheAdapter:
                 "tokenizer": getattr(self.model, "tokenizer", None),
                 "oqm_config": oqm_config, "adapter_config": self.config}
 
+    def temporary_state(self) -> dict[str, Any]:
+        """返回当前段缓存、临时峰值和反量化工作区记录。"""
+        return {
+            "pending_external_frames": self._pending,
+            "observed_peak_bytes": self._temporary_peaks,
+            "dequantization_workspace": self._workspace.report(),
+        }
+
     def state_report(self) -> dict[str, Any]:
-        persistent, static = self._persistent_objects(), self._static_objects()
-        temporary = {"pending_external_frames": self._pending,
-                     "observed_peak_bytes": self._temporary_peaks,
-                     "dequantization_workspace": self._workspace.report()}
+        persistent = self.persistent_state()
+        static = self.static_extra_state()
+        temporary = self.temporary_state()
         oqm = self._get_oqm()
         return {
             "persistent": {"bytes": object_nbytes(persistent), "objects": describe_tree(persistent, "persistent")},

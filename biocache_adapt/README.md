@@ -8,7 +8,8 @@
 - `push_frames`：最多持有一个 `segment_frames` 段，随后调用官方 streaming 入口；段内官方 encoder batch 行为保持不变。
 - `answer` / `query`：对字符串用模型 tokenizer 编码，或直接接收 `input_ids`，再调用官方 query/OQM 路径。
 - `close_stream`：返回报告并释放该 video id。
-- `state_report`：递归按 tensor storage 计算真实字节，并划分 `persistent`、`static`、`temporary`。
+- `persistent_state()` / `static_extra_state()` / `temporary_state()`：公开返回统一契约的三类原始状态对象。
+- `state_report()`：复用上述三个方法，递归按 tensor storage 计算 `persistent`、`static`、`temporary` 的真实字节。
 
 persistent 清单包含未量化 KV，以及每层 OQM `init_tokens`、`keys/values_packed`、`keys/values_scales`、`keys/values_mins`、`keys/values_S`、group keys、batch metadata、stored token count 与 original dtype。temporary 清单包含外部段缓存和反量化工作区；probe 会记录 unpack、dequantize、selective/window reconstruction 实际返回 tensor 的峰值，并明确列出 packed slice、uint8 unpack、scale/min broadcast、dequantized groups、输出 K/V。
 
