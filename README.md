@@ -1,3 +1,5 @@
+> **BioCache fork:** [Qwen2.5-VL-7B streaming adapter](biocache_adapt/QWEN25_STREAMING.md), with CPU integration tests and memory accounting.
+
 # [CVPR 2026] StreamingTOM: Streaming Token Compression for Efficient Video Understanding
 
 [![arXiv](https://img.shields.io/badge/arXiv-2510.18269-b31b1b.svg)](https://arxiv.org/abs/2510.18269)

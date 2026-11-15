@@ -5,8 +5,8 @@ from ..main import get_streamingtom_config
 
 class OQM:
 
-    def __init__(self):
-        config = get_streamingtom_config().config
+    def __init__(self, config=None):
+        config = get_streamingtom_config().config if config is None else config
 
         self.retrieval_max_tokens = config['oqm_retrieval_max_tokens']
         self.enable_quantization = config['oqm_enable_quantization']

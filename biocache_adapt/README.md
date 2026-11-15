@@ -1,3 +1,5 @@
+> **Qwen2.5-VL adaptation (2026-11-15):** [native streaming entry, protocol, tests and porting changes](QWEN25_STREAMING.md). Earlier adapter interfaces are documented below.
+
 # StreamingTOM BioCache streaming adapter
 
 该包包装官方 `generate_with_streamingtom_streaming` 与 OQM。调用方必须按时间顺序提供已经预处理的 `[C,H,W]` 外部 tensor；适配器不接收视频路径、不解码、不下载，也不会预读完整视频。

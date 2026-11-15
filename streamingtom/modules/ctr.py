@@ -5,8 +5,8 @@ from ..main import get_streamingtom_config
 
 class CTR:
 
-    def __init__(self):
-        config = get_streamingtom_config().config
+    def __init__(self, config=None):
+        config = get_streamingtom_config().config if config is None else config
         self.retain_tokens = config['ctr_retain_tokens']
         self.similarity_threshold = config['ctr_similarity_threshold']
         self.k = config['ctr_k']
@@ -130,13 +130,14 @@ class CTR:
         static_mask = static_masks[frame_idx]
         dynamic_mask = dynamic_masks[frame_idx]
 
-        assert frame_features.shape[0] == 196, f"Frame {frame_idx}: Expected 196 tokens but got {frame_features.shape[0]}"
+        token_count = frame_features.shape[0]
+        assert token_count > 0, "Empty visual grid"
 
         static_count = static_mask.sum().item()
         dynamic_count = dynamic_mask.sum().item()
         total_count = static_count + dynamic_count
 
-        assert total_count == 196, f"Frame {frame_idx}: Classification error! Static+Dynamic={total_count}, expected 196"
+        assert total_count == token_count, "Static/dynamic classification must cover the native grid"
 
         static_budget = int(self.retain_tokens * static_count / total_count)
         dynamic_budget = self.retain_tokens - static_budget
@@ -168,7 +169,9 @@ class CTR:
 
         all_positions = torch.cat(collected_positions)
         all_features = torch.cat(collected_features, dim=0)
-        result = all_features[torch.argsort(all_positions)]
+        order = torch.argsort(all_positions)
+        result = all_features[order]
+        self.last_selected_positions = all_positions[order]
 
         if result.shape[0] > self.retain_tokens:
             result = result[:self.retain_tokens]
